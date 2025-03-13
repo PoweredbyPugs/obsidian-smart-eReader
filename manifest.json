@@ -1,0 +1,11 @@
+{
+	"id": "obsidian-ebook-reader",
+	"name": "E-Book Reader",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "Read and manage your e-books directly in Obsidian with a feature-rich reading experience.",
+	"author": "Chris Buckley",
+	"authorUrl": "https://github.com/PoweredbyPugs",
+	"fundingUrl": "",
+	"isDesktopOnly": false
+}

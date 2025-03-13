@@ -1,0 +1,106 @@
+{
+  "libraryPath": "Home/Library/Books",
+  "cloudServices": {
+    "dropbox": {
+      "enabled": false,
+      "apiKey": ""
+    },
+    "googleDrive": {
+      "enabled": false,
+      "clientId": ""
+    },
+    "oneDrive": {
+      "enabled": false,
+      "clientId": ""
+    }
+  },
+  "reading": {
+    "fontSize": 17,
+    "lineHeight": 1.6,
+    "theme": "dark",
+    "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif",
+    "margins": 2,
+    "pageTurnAnimation": true
+  },
+  "sync": {
+    "enabled": true,
+    "syncBookmarks": true,
+    "syncHighlights": true,
+    "syncReadingProgress": true,
+    "syncNotes": true
+  },
+  "books": [
+    {
+      "id": "book_1741843914696_3fkxqyu5d",
+      "title": "Immortal Longings",
+      "author": "Chloe Gong",
+      "path": "Home/Library/Books/Immortal Longings - Chloe Gong.epub",
+      "coverPath": "Home/Library/Books/.covers/book_1741843914696_3fkxqyu5d.jpg",
+      "addedDate": 1741843914696,
+      "lastOpenedDate": 1741846062518,
+      "progress": 16.3,
+      "source": "local",
+      "publisher": "Gallery / Saga Press",
+      "language": "EN-US",
+      "publishDate": "2023-07-18"
+    },
+    {
+      "id": "book_1741843914739_rq0hd8r9v",
+      "title": "Jingsketch Tutorials — Autumn Illustrations",
+      "author": "Jimmy Xia",
+      "path": "Home/Library/Books/Jingsketch Tutorials -- Autumn - Jimmy Xia.epub",
+      "coverPath": "",
+      "addedDate": 1741843914739,
+      "lastOpenedDate": 1741845842863,
+      "progress": 14,
+      "source": "local",
+      "language": "en",
+      "publishDate": "2019-08-16"
+    },
+    {
+      "id": "book_1741843914789_8nnhq67e3",
+      "title": "The Nature of Astrology",
+      "author": "Scofield, Bruce;",
+      "path": "Home/Library/Books/The Nature of Astrology - Bruce Scofield.epub",
+      "coverPath": "",
+      "addedDate": 1741843914789,
+      "lastOpenedDate": 1741845851170,
+      "progress": 18.2,
+      "source": "local",
+      "publisher": "Inner Traditions International, Limited",
+      "language": "en",
+      "publishDate": "2022-11-16"
+    }
+  ],
+  "collections": [],
+  "readingStates": {
+    "book_1741834194083_hiatf26pl": {
+      "currentLocation": "c02",
+      "position": 0,
+      "bookmarks": [],
+      "highlights": [],
+      "notes": []
+    },
+    "book_1741835979128_qiktcqo2h": {
+      "currentLocation": "ch01",
+      "position": 0,
+      "bookmarks": [],
+      "highlights": [],
+      "notes": []
+    },
+    "book_1741843914789_8nnhq67e3": {
+      "currentLocation": "cvi",
+      "position": 0,
+      "bookmarks": [],
+      "highlights": [],
+      "notes": []
+    },
+    "book_1741843914696_3fkxqyu5d": {
+      "currentLocation": "ch02",
+      "position": 0,
+      "bookmarks": [],
+      "highlights": [],
+      "notes": []
+    }
+  }
+}
