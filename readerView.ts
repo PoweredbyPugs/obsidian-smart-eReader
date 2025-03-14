@@ -121,11 +121,37 @@ export class ReaderView extends ItemView {
                 throw new Error(`Cannot find file: ${book.path}`);
             }
             
+            console.log(`Loading book: ${book.title} from path: ${book.path}`);
+            
             // Read the file data
             const data = await this.app.vault.readBinary(file);
+            console.log(`Read ${data.byteLength} bytes from file`);
             
             // Parse the EPUB
             this.epubContent = await parseEpub(data);
+            
+            console.log(`EPUB parsed. Spine items: ${this.epubContent.spine?.items?.length || 0}`);
+            console.log(`Content keys: ${Object.keys(this.epubContent.content || {}).length}`);
+            
+            // Debug: Print spine items and available content
+            console.log("Spine items:", this.epubContent.spine?.items);
+            console.log("Content keys:", Object.keys(this.epubContent.content || {}));
+            
+            if (!this.epubContent.spine || !this.epubContent.spine.items || this.epubContent.spine.items.length === 0) {
+                throw new Error("No spine items found in EPUB");
+            }
+            
+            if (!this.epubContent.content || Object.keys(this.epubContent.content).length === 0) {
+                throw new Error("No content found in EPUB");
+            }
+            
+            // Check if spine items exist in content
+            const missingContent = this.epubContent.spine.items.filter(
+                id => this.epubContent?.content && !this.epubContent.content[id]
+            );
+            if (missingContent.length > 0) {
+                console.warn(`Missing content for spine items: ${missingContent.join(', ')}`);
+            }
             
             // Load or initialize reading state
             this.readingState = await this.plugin.storageManager.getReadingState(book.id) || {
@@ -135,6 +161,19 @@ export class ReaderView extends ItemView {
                 highlights: [],
                 notes: []
             };
+            
+            // Ensure current location is valid
+            if (!this.epubContent.content[this.readingState.currentLocation]) {
+                console.warn(`Invalid location ${this.readingState.currentLocation}, resetting`);
+                // Find first item with content
+                for (const id of this.epubContent.spine.items) {
+                    if (this.epubContent.content[id]) {
+                        this.readingState.currentLocation = id;
+                        this.readingState.position = 0;
+                        break;
+                    }
+                }
+            }
             
             // Render the book content
             this.renderBook();
@@ -361,19 +400,45 @@ export class ReaderView extends ItemView {
         this.updateProgressDisplay();
     }
 
-    private navigateToLocation(itemId: string, position: number, fragment?: string) {
-        if (!this.epubContent || !this.readingState) return;
+    private navigateToLocation(itemId: string, position: number, fragment?: string): void {
+        if (!this.epubContent || !this.readingState) {
+            console.error("Cannot navigate: epubContent or readingState is null");
+            return;
+        }
         
         // Find the chapter index
         const chapterIndex = this.epubContent.spine.items.indexOf(itemId);
-        if (chapterIndex === -1) return;
+        if (chapterIndex === -1) {
+            console.error(`Chapter ${itemId} not found in spine items`);
+            // Fall back to the first chapter instead of just returning
+            itemId = this.epubContent.spine.items[0];
+            position = 0;
+            console.log(`Falling back to first chapter: ${itemId}`);
+        }
         
-        this.currentChapterIndex = chapterIndex;
+        this.currentChapterIndex = this.epubContent.spine.items.indexOf(itemId);
         this.totalChapters = this.epubContent.spine.items.length;
         
         // Get the chapter content
         const content = this.epubContent.content[itemId];
-        if (!content) return;
+        if (!content) {
+            console.error(`Content for chapter ${itemId} not found`);
+            // Try to find any chapter with content
+            for (const id of this.epubContent.spine.items) {
+                if (this.epubContent.content[id]) {
+                    console.log(`Found content for ${id}, using instead`);
+                    return this.navigateToLocation(id, 0);
+                }
+            }
+            
+            // If we get here, no chapters have content
+            console.error("No chapter content found in the book");
+            const chapterEl = this.readerEl.querySelector('.ebook-reader-chapter');
+            if (chapterEl) {
+                chapterEl.innerHTML = '<div class="ebook-reader-error">No content could be loaded from this book.</div>';
+            }
+            return;
+        }
         
         // Update the reading state
         this.readingState.currentLocation = itemId;
@@ -383,27 +448,34 @@ export class ReaderView extends ItemView {
         // Render the chapter content
         const chapterEl = this.readerEl.querySelector('.ebook-reader-chapter');
         if (chapterEl) {
-            // Process the HTML to make it safe and apply our styling
-            const processedHtml = this.processChapterHtml(content);
-            chapterEl.innerHTML = processedHtml;
-            
-            // Scroll to position
-            if (fragment) {
-                const target = chapterEl.querySelector(`#${fragment}`);
-                if (target) {
-                    target.scrollIntoView();
+            try {
+                // Process the HTML to make it safe and apply our styling
+                const processedHtml = this.processChapterHtml(content);
+                chapterEl.innerHTML = processedHtml;
+                
+                // Scroll to position
+                if (fragment) {
+                    const target = chapterEl.querySelector(`#${fragment}`);
+                    if (target) {
+                        target.scrollIntoView();
+                    }
+                } else {
+                    this.scrollToPercent(position);
                 }
-            } else {
-                this.scrollToPercent(position);
+                
+                // Update the progress display
+                this.updateProgressDisplay();
+                
+                // Add event listeners for text selection (for highlights)
+                if (chapterEl instanceof HTMLElement) {
+                    this.setupTextSelectionHandlers(chapterEl);
+                }
+            } catch (error) {
+                console.error("Error rendering chapter:", error);
+                chapterEl.innerHTML = `<div class="ebook-reader-error">Error rendering chapter: ${error.message}</div>`;
             }
-            
-            // Update the progress display
-            this.updateProgressDisplay();
-            
-            // Add event listeners for text selection (for highlights)
-            if (chapterEl instanceof HTMLElement) {
-                this.setupTextSelectionHandlers(chapterEl);
-            }
+        } else {
+            console.error("Chapter element not found in DOM");
         }
     }
 

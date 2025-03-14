@@ -2827,25 +2827,33 @@ async function parseEpub(data) {
   };
 }
 function processHtml(html, htmlPath, basePath, manifest) {
-  const htmlDir = htmlPath.substring(0, htmlPath.lastIndexOf("/") + 1);
-  const doc = parseXml(html);
-  const images = doc.querySelectorAll("img");
-  Array.from(images).forEach((img) => {
-    const src = img.getAttribute("src");
-    if (src && !src.startsWith("http")) {
-      img.setAttribute("data-original-src", src);
-      img.classList.add("epub-image");
-    }
-  });
-  const links = doc.querySelectorAll('link[rel="stylesheet"]');
-  Array.from(links).forEach((link) => {
-    const href = link.getAttribute("href");
-    if (href && !href.startsWith("http")) {
-      link.setAttribute("data-original-href", href);
-    }
-  });
-  const serializer = new XMLSerializer();
-  return serializer.serializeToString(doc);
+  console.log(`Processing HTML for ${htmlPath} with base path ${basePath}`);
+  try {
+    const htmlDir = htmlPath.substring(0, htmlPath.lastIndexOf("/") + 1);
+    const doc = parseXml(html);
+    const images = doc.querySelectorAll("img");
+    console.log(`Found ${images.length} images in HTML`);
+    Array.from(images).forEach((img) => {
+      const src = img.getAttribute("src");
+      if (src && !src.startsWith("http")) {
+        console.log(`Processing image with src=${src}`);
+        img.setAttribute("data-original-src", src);
+        img.classList.add("epub-image");
+      }
+    });
+    const links = doc.querySelectorAll('link[rel="stylesheet"]');
+    Array.from(links).forEach((link) => {
+      const href = link.getAttribute("href");
+      if (href && !href.startsWith("http")) {
+        link.setAttribute("data-original-href", href);
+      }
+    });
+    const serializer = new XMLSerializer();
+    return serializer.serializeToString(doc);
+  } catch (error) {
+    console.error(`Error processing HTML for ${htmlPath}:`, error);
+    return `<div class="error">Error processing content: ${error.message}</div>`;
+  }
 }
 function parseMetadata(opfDoc) {
   const metadataEl = opfDoc.querySelector("metadata");
@@ -2989,6 +2997,12 @@ function findCoverPath(opfDoc, manifest) {
   }
   for (const item of Object.values(manifest)) {
     if (isImageType(item.mediaType) && (item.id.toLowerCase().includes("cover") || item.href.toLowerCase().includes("cover"))) {
+      return item.href;
+    }
+  }
+  for (const item of Object.values(manifest)) {
+    if (isImageType(item.mediaType)) {
+      console.log("Using first image as cover:", item.href);
       return item.href;
     }
   }
@@ -3433,7 +3447,7 @@ var ReaderView = class extends import_obsidian2.ItemView {
     }
   }
   async loadBook(book) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e, _f;
     this.book = book;
     if (this.readerEl) {
       this.readerEl.empty();
@@ -3447,8 +3461,29 @@ var ReaderView = class extends import_obsidian2.ItemView {
       if (!(file instanceof import_obsidian2.TFile)) {
         throw new Error(`Cannot find file: ${book.path}`);
       }
+      console.log(`Loading book: ${book.title} from path: ${book.path}`);
       const data = await this.app.vault.readBinary(file);
+      console.log(`Read ${data.byteLength} bytes from file`);
       this.epubContent = await parseEpub(data);
+      console.log(`EPUB parsed. Spine items: ${((_c = (_b = this.epubContent.spine) == null ? void 0 : _b.items) == null ? void 0 : _c.length) || 0}`);
+      console.log(`Content keys: ${Object.keys(this.epubContent.content || {}).length}`);
+      console.log("Spine items:", (_d = this.epubContent.spine) == null ? void 0 : _d.items);
+      console.log("Content keys:", Object.keys(this.epubContent.content || {}));
+      if (!this.epubContent.spine || !this.epubContent.spine.items || this.epubContent.spine.items.length === 0) {
+        throw new Error("No spine items found in EPUB");
+      }
+      if (!this.epubContent.content || Object.keys(this.epubContent.content).length === 0) {
+        throw new Error("No content found in EPUB");
+      }
+      const missingContent = this.epubContent.spine.items.filter(
+        (id) => {
+          var _a2;
+          return ((_a2 = this.epubContent) == null ? void 0 : _a2.content) && !this.epubContent.content[id];
+        }
+      );
+      if (missingContent.length > 0) {
+        console.warn(`Missing content for spine items: ${missingContent.join(", ")}`);
+      }
       this.readingState = await this.plugin.storageManager.getReadingState(book.id) || {
         currentLocation: this.epubContent.spine.items[0] || "",
         position: 0,
@@ -3456,11 +3491,21 @@ var ReaderView = class extends import_obsidian2.ItemView {
         highlights: [],
         notes: []
       };
+      if (!this.epubContent.content[this.readingState.currentLocation]) {
+        console.warn(`Invalid location ${this.readingState.currentLocation}, resetting`);
+        for (const id of this.epubContent.spine.items) {
+          if (this.epubContent.content[id]) {
+            this.readingState.currentLocation = id;
+            this.readingState.position = 0;
+            break;
+          }
+        }
+      }
       this.renderBook();
     } catch (error) {
       console.error("Error loading book:", error);
-      (_b = this.readerEl) == null ? void 0 : _b.empty();
-      (_c = this.readerEl) == null ? void 0 : _c.createDiv({
+      (_e = this.readerEl) == null ? void 0 : _e.empty();
+      (_f = this.readerEl) == null ? void 0 : _f.createDiv({
         text: `Error loading book: ${error.message}`,
         cls: "ebook-reader-error"
       });
@@ -3621,35 +3666,61 @@ var ReaderView = class extends import_obsidian2.ItemView {
     this.updateProgressDisplay();
   }
   navigateToLocation(itemId, position, fragment) {
-    if (!this.epubContent || !this.readingState)
+    if (!this.epubContent || !this.readingState) {
+      console.error("Cannot navigate: epubContent or readingState is null");
       return;
+    }
     const chapterIndex = this.epubContent.spine.items.indexOf(itemId);
-    if (chapterIndex === -1)
-      return;
-    this.currentChapterIndex = chapterIndex;
+    if (chapterIndex === -1) {
+      console.error(`Chapter ${itemId} not found in spine items`);
+      itemId = this.epubContent.spine.items[0];
+      position = 0;
+      console.log(`Falling back to first chapter: ${itemId}`);
+    }
+    this.currentChapterIndex = this.epubContent.spine.items.indexOf(itemId);
     this.totalChapters = this.epubContent.spine.items.length;
     const content = this.epubContent.content[itemId];
-    if (!content)
+    if (!content) {
+      console.error(`Content for chapter ${itemId} not found`);
+      for (const id of this.epubContent.spine.items) {
+        if (this.epubContent.content[id]) {
+          console.log(`Found content for ${id}, using instead`);
+          return this.navigateToLocation(id, 0);
+        }
+      }
+      console.error("No chapter content found in the book");
+      const chapterEl2 = this.readerEl.querySelector(".ebook-reader-chapter");
+      if (chapterEl2) {
+        chapterEl2.innerHTML = '<div class="ebook-reader-error">No content could be loaded from this book.</div>';
+      }
       return;
+    }
     this.readingState.currentLocation = itemId;
     this.readingState.position = position;
     this.saveReadingState();
     const chapterEl = this.readerEl.querySelector(".ebook-reader-chapter");
     if (chapterEl) {
-      const processedHtml = this.processChapterHtml(content);
-      chapterEl.innerHTML = processedHtml;
-      if (fragment) {
-        const target = chapterEl.querySelector(`#${fragment}`);
-        if (target) {
-          target.scrollIntoView();
+      try {
+        const processedHtml = this.processChapterHtml(content);
+        chapterEl.innerHTML = processedHtml;
+        if (fragment) {
+          const target = chapterEl.querySelector(`#${fragment}`);
+          if (target) {
+            target.scrollIntoView();
+          }
+        } else {
+          this.scrollToPercent(position);
         }
-      } else {
-        this.scrollToPercent(position);
+        this.updateProgressDisplay();
+        if (chapterEl instanceof HTMLElement) {
+          this.setupTextSelectionHandlers(chapterEl);
+        }
+      } catch (error) {
+        console.error("Error rendering chapter:", error);
+        chapterEl.innerHTML = `<div class="ebook-reader-error">Error rendering chapter: ${error.message}</div>`;
       }
-      this.updateProgressDisplay();
-      if (chapterEl instanceof HTMLElement) {
-        this.setupTextSelectionHandlers(chapterEl);
-      }
+    } else {
+      console.error("Chapter element not found in DOM");
     }
   }
   processChapterHtml(html) {
@@ -4262,11 +4333,27 @@ var LibraryView = class extends import_obsidian3.ItemView {
   createBookCard(book) {
     const card = this.booksContainer.createDiv({ cls: "ebook-book-card" });
     const coverContainer = card.createDiv({ cls: "ebook-book-cover" });
-    if (book.coverPath) {
-      const coverImg = coverContainer.createEl("img", {
-        attr: { src: this.plugin.app.vault.adapter.getResourcePath(book.coverPath) }
-      });
+    if (book.coverPath && book.coverPath.trim() !== "") {
+      try {
+        const coverImg = coverContainer.createEl("img", {
+          attr: {
+            src: this.plugin.app.vault.adapter.getResourcePath(book.coverPath),
+            alt: `Cover for ${book.title}`
+          }
+        });
+        coverImg.addEventListener("error", () => {
+          console.log(`Cover image failed to load: ${book.coverPath}`);
+          coverImg.remove();
+          createPlaceholder();
+        });
+      } catch (error) {
+        console.error(`Error loading cover for ${book.title}:`, error);
+        createPlaceholder();
+      }
     } else {
+      createPlaceholder();
+    }
+    function createPlaceholder() {
       const placeholderEl = coverContainer.createDiv({ cls: "ebook-book-cover-placeholder" });
       const titleInitial = book.title.charAt(0).toUpperCase();
       placeholderEl.createSpan({ text: titleInitial });
@@ -4293,6 +4380,28 @@ var LibraryView = class extends import_obsidian3.ItemView {
       menu.addItem((item) => {
         item.setTitle("Open Book").onClick(() => {
           this.plugin.openBookInReader(book);
+        });
+      });
+      menu.addItem((item) => {
+        item.setTitle("Extract Cover").onClick(async () => {
+          try {
+            const file = this.plugin.app.vault.getAbstractFileByPath(book.path);
+            if (file instanceof import_obsidian3.TFile) {
+              const data = await this.plugin.app.vault.readBinary(file);
+              const epubContent = await parseEpub(data);
+              if (epubContent.coverPath) {
+                book.coverPath = await this.plugin.extractAndSaveCover(epubContent, book.id);
+                await this.plugin.library.updateBook(book);
+                new import_obsidian3.Notice(`Cover extracted for "${book.title}"`);
+                this.renderBooks();
+              } else {
+                new import_obsidian3.Notice(`No cover found in "${book.title}"`);
+              }
+            }
+          } catch (error) {
+            console.error("Error extracting cover:", error);
+            new import_obsidian3.Notice(`Error extracting cover: ${error.message}`);
+          }
         });
       });
       menu.addItem((item) => {
@@ -4895,7 +5004,26 @@ var EbookReaderPlugin = class extends import_obsidian4.Plugin {
           }
         }
       }
-      const coverData = epubContent.coverData;
+      let coverData = epubContent.coverData;
+      if (!coverData && epubContent.coverPath) {
+        try {
+          if (epubContent.resources && epubContent.coverPath in epubContent.resources) {
+            coverData = epubContent.resources[epubContent.coverPath];
+            console.log("Found cover in resources:", epubContent.coverPath);
+          } else {
+            const coverFilename = epubContent.coverPath.split("/").pop() || "";
+            for (const [path, data] of Object.entries(epubContent.resources || {})) {
+              if (path.endsWith(coverFilename)) {
+                coverData = data;
+                console.log("Found cover by filename:", path);
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error extracting cover from resources:", e);
+        }
+      }
       if (coverData) {
         const coverPath = `${coversPath}/${bookId}.jpg`;
         const existingCover = this.app.vault.getAbstractFileByPath(coverPath);
@@ -4906,6 +5034,8 @@ var EbookReaderPlugin = class extends import_obsidian4.Plugin {
         await this.app.vault.createBinary(coverPath, coverData);
         console.log("Saved new cover to:", coverPath);
         return coverPath;
+      } else {
+        console.log("No cover data available for", bookId);
       }
       return "";
     } catch (error) {

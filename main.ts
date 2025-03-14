@@ -382,8 +382,6 @@ export default class EbookReaderPlugin extends Plugin {
 	}
 
 	async extractAndSaveCover(epubContent: EpubContent, bookId: string): Promise<string> {
-		// Implementation to extract and save the cover image
-		// Returns the path to the saved cover
 		if (!epubContent.coverPath) return '';
 		
 		try {
@@ -403,8 +401,31 @@ export default class EbookReaderPlugin extends Plugin {
 				}
 			}
 			
-			// Extract cover data and save it
-			const coverData = epubContent.coverData;
+			// Extract cover data from the EPUB if coverData is null
+			let coverData = epubContent.coverData;
+			if (!coverData && epubContent.coverPath) {
+				// Try to extract the cover from the resources
+				try {
+					// Look for the cover in resources
+					if (epubContent.resources && epubContent.coverPath in epubContent.resources) {
+						coverData = epubContent.resources[epubContent.coverPath];
+						console.log("Found cover in resources:", epubContent.coverPath);
+					} else {
+						// Look for cover using filename
+						const coverFilename = epubContent.coverPath.split('/').pop() || '';
+						for (const [path, data] of Object.entries(epubContent.resources || {})) {
+							if (path.endsWith(coverFilename)) {
+								coverData = data;
+								console.log("Found cover by filename:", path);
+								break;
+							}
+						}
+					}
+				} catch (e) {
+					console.error("Error extracting cover from resources:", e);
+				}
+			}
+			
 			if (coverData) {
 				const coverPath = `${coversPath}/${bookId}.jpg`;
 				
@@ -419,6 +440,8 @@ export default class EbookReaderPlugin extends Plugin {
 				await this.app.vault.createBinary(coverPath, coverData);
 				console.log("Saved new cover to:", coverPath);
 				return coverPath;
+			} else {
+				console.log("No cover data available for", bookId);
 			}
 			
 			return '';
@@ -427,7 +450,6 @@ export default class EbookReaderPlugin extends Plugin {
 			return '';
 		}
 	}
-
 	// Method for extracting resources from EPUBs
 	async extractAndSaveResource(bookId: string, relativePath: string): Promise<string | null> {
 		try {

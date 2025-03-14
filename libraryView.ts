@@ -1,8 +1,9 @@
 // Add this to a new file named libraryView.ts
 
-import { ItemView, WorkspaceLeaf, Menu, Notice } from 'obsidian';
-import { Book } from './libraryManager';
+import { ItemView, WorkspaceLeaf, Menu, TFile, TAbstractFile, TFolder, Notice } from 'obsidian';
+import { parseEpub } from './epubParser';
 import EbookReaderPlugin from './main';
+import { Book } from './libraryManager';
 
 export const LIBRARY_VIEW_TYPE = 'ebook-library-view';
 
@@ -270,11 +271,31 @@ export class LibraryView extends ItemView {
         // Cover image or placeholder
         const coverContainer = card.createDiv({ cls: 'ebook-book-cover' });
         
-        if (book.coverPath) {
-            const coverImg = coverContainer.createEl('img', {
-                attr: { src: this.plugin.app.vault.adapter.getResourcePath(book.coverPath) }
-            });
+        if (book.coverPath && book.coverPath.trim() !== '') {
+            try {
+                // Simplify the image creation - don't check if file exists first
+                const coverImg = coverContainer.createEl('img', {
+                    attr: { 
+                        src: this.plugin.app.vault.adapter.getResourcePath(book.coverPath),
+                        alt: `Cover for ${book.title}`
+                    }
+                });
+                
+                // Add error handler to fall back to placeholder if image fails to load
+                coverImg.addEventListener('error', () => {
+                    console.log(`Cover image failed to load: ${book.coverPath}`);
+                    coverImg.remove();
+                    createPlaceholder();
+                });
+            } catch (error) {
+                console.error(`Error loading cover for ${book.title}:`, error);
+                createPlaceholder();
+            }
         } else {
+            createPlaceholder();
+        }
+        
+        function createPlaceholder() {
             // Placeholder for books without covers
             const placeholderEl = coverContainer.createDiv({ cls: 'ebook-book-cover-placeholder' });
             const titleInitial = book.title.charAt(0).toUpperCase();
@@ -296,7 +317,7 @@ export class LibraryView extends ItemView {
         // Tags
         if (book.tags && book.tags.length > 0) {
             const tagsContainer = infoEl.createDiv({ cls: 'ebook-book-tags' });
-            book.tags.slice(0, 3).forEach(tag => { // Show up to 3 tags
+            book.tags.slice(0, 3).forEach((tag: string) => { // Show up to 3 tags
                 tagsContainer.createSpan({ text: tag, cls: 'ebook-book-tag' });
             });
         }
@@ -315,6 +336,33 @@ export class LibraryView extends ItemView {
                     .setTitle('Open Book')
                     .onClick(() => {
                         this.plugin.openBookInReader(book);
+                    });
+            });
+            
+            menu.addItem(item => {
+                item
+                    .setTitle('Extract Cover')
+                    .onClick(async () => {
+                        try {
+                            // Try to re-extract the cover
+                            const file = this.plugin.app.vault.getAbstractFileByPath(book.path);
+                            if (file instanceof TFile) {
+                                const data = await this.plugin.app.vault.readBinary(file);
+                                const epubContent = await parseEpub(data);
+                                
+                                if (epubContent.coverPath) {
+                                    book.coverPath = await this.plugin.extractAndSaveCover(epubContent, book.id);
+                                    await this.plugin.library.updateBook(book);
+                                    new Notice(`Cover extracted for "${book.title}"`);
+                                    this.renderBooks(); // Refresh the library view
+                                } else {
+                                    new Notice(`No cover found in "${book.title}"`);
+                                }
+                            }
+                        } catch (error) {
+                            console.error("Error extracting cover:", error);
+                            new Notice(`Error extracting cover: ${error.message}`);
+                        }
                     });
             });
             

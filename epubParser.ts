@@ -160,38 +160,49 @@ export async function parseEpub(data: ArrayBuffer): Promise<EpubContent> {
  * Process HTML content to handle relative paths
  */
 function processHtml(html: string, htmlPath: string, basePath: string, manifest: Record<string, EpubManifestItem>): string {
-    const htmlDir = htmlPath.substring(0, htmlPath.lastIndexOf('/') + 1);
+    console.log(`Processing HTML for ${htmlPath} with base path ${basePath}`);
     
-    // Parse the HTML
-    const doc = parseXml(html);
-    
-    // Process image sources
-    const images = doc.querySelectorAll('img');
-    Array.from(images).forEach(img => {
-        const src = img.getAttribute('src');
-        if (src && !src.startsWith('http')) {
-            // Handle relative paths
-            // Store the original src as a data attribute
-            img.setAttribute('data-original-src', src);
-            
-            // Add a special class for the reader to identify EPUB images
-            img.classList.add('epub-image');
-        }
-    });
-    
-    // Process CSS links
-    const links = doc.querySelectorAll('link[rel="stylesheet"]');
-    Array.from(links).forEach(link => {
-        const href = link.getAttribute('href');
-        if (href && !href.startsWith('http')) {
-            // Handle relative paths
-            link.setAttribute('data-original-href', href);
-        }
-    });
-    
-    // Convert back to string
-    const serializer = new XMLSerializer();
-    return serializer.serializeToString(doc);
+    try {
+        const htmlDir = htmlPath.substring(0, htmlPath.lastIndexOf('/') + 1);
+        
+        // Parse the HTML
+        const doc = parseXml(html);
+        
+        // Process image sources
+        const images = doc.querySelectorAll('img');
+        console.log(`Found ${images.length} images in HTML`);
+        
+        Array.from(images).forEach(img => {
+            const src = img.getAttribute('src');
+            if (src && !src.startsWith('http')) {
+                console.log(`Processing image with src=${src}`);
+                
+                // Handle relative paths
+                // Store the original src as a data attribute
+                img.setAttribute('data-original-src', src);
+                
+                // Add a special class for the reader to identify EPUB images
+                img.classList.add('epub-image');
+            }
+        });
+        
+        // Process CSS links
+        const links = doc.querySelectorAll('link[rel="stylesheet"]');
+        Array.from(links).forEach(link => {
+            const href = link.getAttribute('href');
+            if (href && !href.startsWith('http')) {
+                // Handle relative paths
+                link.setAttribute('data-original-href', href);
+            }
+        });
+        
+        // Convert back to string
+        const serializer = new XMLSerializer();
+        return serializer.serializeToString(doc);
+    } catch (error) {
+        console.error(`Error processing HTML for ${htmlPath}:`, error);
+        return `<div class="error">Error processing content: ${error.message}</div>`;
+    }
 }
 
 /**
@@ -410,6 +421,14 @@ function findCoverPath(opfDoc: Document, manifest: Record<string, EpubManifestIt
         if (isImageType(item.mediaType) && 
             (item.id.toLowerCase().includes('cover') || 
              item.href.toLowerCase().includes('cover'))) {
+            return item.href;
+        }
+    }
+    
+    // Strategy 5: Just take the first image we find if nothing else worked
+    for (const item of Object.values(manifest)) {
+        if (isImageType(item.mediaType)) {
+            console.log("Using first image as cover:", item.href);
             return item.href;
         }
     }
